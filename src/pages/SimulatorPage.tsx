@@ -50,7 +50,7 @@ function TabPanel(props: TabPanelProps) {
 }
 
 const SimulatorPage: React.FC = () => {
-  const [activeStep, setActiveStep] = useState(0)
+  const activeStep = 0
   const [tabValue, setTabValue] = useState(0)
   const [algorithmType, setAlgorithmType] = useState('enkf')
   const [isRunning, setIsRunning] = useState(false)
