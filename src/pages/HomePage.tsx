@@ -12,18 +12,21 @@ const HomePage: React.FC = () => {
       description:
         'Reservoir simulation is a mathematical modeling technique used to predict fluid flow behavior in oil and gas reservoirs.',
       icon: '⚙️',
+      image: '/image1.png',
     },
     {
       title: 'History Matching',
       description:
         'History matching is the process of adjusting model parameters to match observed production data from the reservoir.',
       icon: '📊',
+      image: '/image2.png',
     },
     {
       title: 'Ensemble Kalman Filter',
       description:
         'EnKF is an advanced statistical algorithm that automates the history matching process and quantifies prediction uncertainty.',
       icon: '🔄',
+      image: '/image7.png',
     },
     {
       title: 'Forecasting',
@@ -68,6 +71,7 @@ const HomePage: React.FC = () => {
           }}
         >
           <source src="/Offshore_Rig_Video_Generation (1).mp4" type="video/mp4" />
+          Your browser does not support the video tag.
         </Box>
 
         {/* Dark Overlay for Readability */}
@@ -165,8 +169,21 @@ const HomePage: React.FC = () => {
                   },
                 }}
               >
+                {concept.image && (
+                  <Box
+                    component="img"
+                    src={concept.image}
+                    alt={concept.title}
+                    sx={{
+                      width: '100%',
+                      height: 200,
+                      objectFit: 'cover',
+                      borderBottom: '2px solid #F4B400',
+                    }}
+                  />
+                )}
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <Box sx={{ fontSize: '3rem', mb: 2, lineHeight: 1 }}>{concept.icon}</Box>
+                  <Box sx={{ fontSize: '2rem', mb: 2, lineHeight: 1 }}>{concept.icon}</Box>
                   <Typography
                     variant="h6"
                     component="div"
@@ -212,7 +229,16 @@ const HomePage: React.FC = () => {
       </Container>
 
       {/* Features Section */}
-      <Box sx={{ backgroundColor: '#F7F9FC', py: 8, mb: 8 }}>
+      <Box
+        sx={{
+          backgroundColor: '#F7F9FC',
+          py: 8,
+          mb: 8,
+          '@media (prefers-color-scheme: dark)': {
+            backgroundColor: '#1a2332',
+          },
+        }}
+      >
         <Container maxWidth="lg">
           <Typography
             variant="h3"
@@ -233,7 +259,17 @@ const HomePage: React.FC = () => {
               { title: 'Open Source', desc: 'Built with OPM Flow and accessible tools' },
             ].map((feature, idx) => (
               <Grid item xs={12} sm={6} md={3} key={idx}>
-                <Card sx={{ textAlign: 'center', height: '100%', p: 2 }}>
+                <Card
+                  sx={{
+                    textAlign: 'center',
+                    height: '100%',
+                    p: 2,
+                    color: '#1F2937',
+                    '@media (prefers-color-scheme: dark)': {
+                      color: '#ecf0f1',
+                    },
+                  }}
+                >
                   <Box
                     sx={{
                       fontSize: '2.5rem',

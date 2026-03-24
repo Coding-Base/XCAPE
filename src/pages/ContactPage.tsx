@@ -80,6 +80,23 @@ const ContactPage: React.FC = () => {
           Have questions? We'd love to hear from you. Get in touch with us!
         </Typography>
 
+        {/* Contact Image */}
+        <Box
+          component="img"
+          src="/image4.png"
+          alt="Contact Us"
+          sx={{
+            maxWidth: '100%',
+            height: 'auto',
+            maxHeight: 250,
+            mb: 6,
+            borderRadius: 2,
+            boxShadow: '0 8px 24px rgba(15, 76, 129, 0.15)',
+            display: 'block',
+            mx: 'auto',
+          }}
+        />
+
         <Grid container spacing={4}>
           {/* Contact Information */}
           <Grid item xs={12} md={5}>

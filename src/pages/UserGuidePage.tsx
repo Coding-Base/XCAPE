@@ -20,7 +20,6 @@ import {
   Settings as SettingsIcon,
   PlayArrow as RunIcon,
   BarChart as ChartIcon,
-  Download as DownloadIcon,
 } from '@mui/icons-material'
 
 const steps = [
@@ -75,6 +74,23 @@ const UserGuidePage: React.FC = () => {
           Follow this step-by-step guide to perform history matching and simulation using the XCAPE
           platform.
         </Typography>
+
+        {/* Guide Image */}
+        <Box
+          component="img"
+          src="/image8.png"
+          alt="XCAPE User Guide"
+          sx={{
+            maxWidth: '100%',
+            height: 'auto',
+            maxHeight: 280,
+            mb: 6,
+            borderRadius: 2,
+            boxShadow: '0 8px 24px rgba(15, 76, 129, 0.15)',
+            display: 'block',
+            mx: 'auto',
+          }}
+        />
 
         {/* Steps Overview */}
         <Card sx={{ mb: 6, p: 4 }}>
@@ -285,7 +301,14 @@ const UserGuidePage: React.FC = () => {
         </Grid>
 
         {/* Tips & Best Practices */}
-        <Card sx={{ backgroundColor: '#F7F9FC' }}>
+        <Card
+          sx={{
+            backgroundColor: '#F7F9FC',
+            '@media (prefers-color-scheme: dark)': {
+              backgroundColor: '#1a2332',
+            },
+          }}
+        >
           <CardContent>
             <Typography variant="h6" sx={{ fontWeight: 700, color: '#0F4C81', mb: 2 }}>
               💡 Tips & Best Practices

@@ -97,10 +97,12 @@ export const darkTheme = createTheme({
     primary: {
       main: colors.primary,
       light: '#1F7A8C',
+      contrastText: '#fff',
     },
     secondary: {
       main: colors.secondary,
       light: '#F4B400',
+      contrastText: '#fff',
     },
     background: {
       default: '#1a1a2e',
@@ -108,7 +110,9 @@ export const darkTheme = createTheme({
     },
     text: {
       primary: '#ecf0f1',
+      secondary: '#bdbdbd',
     },
+    divider: '#404854',
     success: {
       main: colors.success,
     },
@@ -132,22 +136,41 @@ export const darkTheme = createTheme({
     h1: {
       fontSize: '2.5rem',
       fontWeight: 700,
+      color: '#ecf0f1',
     },
     h2: {
       fontSize: '2rem',
       fontWeight: 700,
+      color: '#ecf0f1',
     },
     h3: {
       fontSize: '1.5rem',
       fontWeight: 600,
+      color: '#ecf0f1',
     },
     h4: {
       fontSize: '1.25rem',
       fontWeight: 600,
+      color: '#ecf0f1',
+    },
+    h5: {
+      fontSize: '1rem',
+      fontWeight: 600,
+      color: '#ecf0f1',
+    },
+    h6: {
+      fontSize: '0.875rem',
+      fontWeight: 600,
+      color: '#ecf0f1',
     },
     body1: {
       fontSize: '1rem',
       lineHeight: 1.6,
+      color: '#ecf0f1',
+    },
+    body2: {
+      fontSize: '0.875rem',
+      color: '#bdbdbd',
     },
   },
   components: {
@@ -155,7 +178,9 @@ export const darkTheme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: '12px',
-          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.5)',
+          backgroundColor: '#16213e',
+          color: '#ecf0f1',
         },
       },
     },
@@ -165,6 +190,95 @@ export const darkTheme = createTheme({
           borderRadius: '8px',
           textTransform: 'none',
           fontWeight: 600,
+        },
+        outlined: {
+          borderColor: '#404854',
+          '&:hover': {
+            borderColor: '#5a6b7f',
+          },
+        },
+      },
+    },
+    MuiTextField: {
+      styleOverrides: {
+        root: {
+          '& .MuiOutlinedInput-root': {
+            color: '#ecf0f1',
+            '& fieldset': {
+              borderColor: '#404854',
+            },
+            '&:hover fieldset': {
+              borderColor: '#5a6b7f',
+            },
+            '&.Mui-focused fieldset': {
+              borderColor: '#0F4C81',
+            },
+          },
+          '& .MuiInputBase-input::placeholder': {
+            color: '#7a8fa5',
+            opacity: 0.7,
+          },
+        },
+      },
+    },
+    MuiInputLabel: {
+      styleOverrides: {
+        root: {
+          color: '#bdbdbd',
+          '&.Mui-focused': {
+            color: '#0F4C81',
+          },
+        },
+      },
+    },
+    MuiOutlinedInput: {
+      styleOverrides: {
+        root: {
+          color: '#ecf0f1',
+          '& fieldset': {
+            borderColor: '#404854',
+          },
+        },
+      },
+    },
+    MuiDialog: {
+      styleOverrides: {
+        paper: {
+          backgroundColor: '#16213e',
+          color: '#ecf0f1',
+        },
+      },
+    },
+    MuiAlert: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#16213e',
+          color: '#ecf0f1',
+        },
+      },
+    },
+    MuiDivider: {
+      styleOverrides: {
+        root: {
+          borderColor: '#404854',
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1a2444',
+          color: '#ecf0f1',
+        },
+      },
+    },
+    MuiPagination: {
+      styleOverrides: {
+        root: {
+          '& .MuiPaginationItem-root': {
+            color: '#ecf0f1',
+            borderColor: '#404854',
+          },
         },
       },
     },

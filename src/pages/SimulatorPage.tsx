@@ -133,7 +133,14 @@ const SimulatorPage: React.FC = () => {
           <TabPanel value={tabValue} index={0}>
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>
-                <Card sx={{ backgroundColor: '#F7F9FC' }}>
+                <Card
+                  sx={{
+                    backgroundColor: '#F7F9FC',
+                    '@media (prefers-color-scheme: dark)': {
+                      backgroundColor: '#1a2332',
+                    },
+                  }}
+                >
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
                       Production Data Upload
@@ -157,7 +164,14 @@ const SimulatorPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <Card sx={{ backgroundColor: '#F7F9FC' }}>
+                <Card
+                  sx={{
+                    backgroundColor: '#F7F9FC',
+                    '@media (prefers-color-scheme: dark)': {
+                      backgroundColor: '#1a2332',
+                    },
+                  }}
+                >
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
                       Reservoir Model Upload
@@ -181,7 +195,14 @@ const SimulatorPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <Card sx={{ backgroundColor: '#F7F9FC' }}>
+                <Card
+                  sx={{
+                    backgroundColor: '#F7F9FC',
+                    '@media (prefers-color-scheme: dark)': {
+                      backgroundColor: '#1a2332',
+                    },
+                  }}
+                >
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
                       Quick Parameters
@@ -191,36 +212,84 @@ const SimulatorPage: React.FC = () => {
                         <TextField
                           fullWidth
                           label="Initial Pressure (bar)"
+                          placeholder="Enter pressure"
                           type="number"
                           defaultValue={200}
                           variant="outlined"
+                          inputProps={{
+                            style: {
+                              color: 'inherit',
+                            },
+                          }}
+                          sx={{
+                            '& .MuiOutlinedInput-input::placeholder': {
+                              color: 'rgba(189, 189, 189, 0.7)',
+                              opacity: 1,
+                            },
+                          }}
                         />
                       </Grid>
                       <Grid item xs={12} sm={6} md={3}>
                         <TextField
                           fullWidth
                           label="Porosity (%)"
+                          placeholder="Enter porosity"
                           type="number"
                           defaultValue={15}
                           variant="outlined"
+                          inputProps={{
+                            style: {
+                              color: 'inherit',
+                            },
+                          }}
+                          sx={{
+                            '& .MuiOutlinedInput-input::placeholder': {
+                              color: 'rgba(189, 189, 189, 0.7)',
+                              opacity: 1,
+                            },
+                          }}
                         />
                       </Grid>
                       <Grid item xs={12} sm={6} md={3}>
                         <TextField
                           fullWidth
                           label="Permeability (mD)"
+                          placeholder="Enter permeability"
                           type="number"
                           defaultValue={100}
                           variant="outlined"
+                          inputProps={{
+                            style: {
+                              color: 'inherit',
+                            },
+                          }}
+                          sx={{
+                            '& .MuiOutlinedInput-input::placeholder': {
+                              color: 'rgba(189, 189, 189, 0.7)',
+                              opacity: 1,
+                            },
+                          }}
                         />
                       </Grid>
                       <Grid item xs={12} sm={6} md={3}>
                         <TextField
                           fullWidth
                           label="Water Saturation (%)"
+                          placeholder="Enter saturation"
                           type="number"
                           defaultValue={30}
                           variant="outlined"
+                          inputProps={{
+                            style: {
+                              color: 'inherit',
+                            },
+                          }}
+                          sx={{
+                            '& .MuiOutlinedInput-input::placeholder': {
+                              color: 'rgba(189, 189, 189, 0.7)',
+                              opacity: 1,
+                            },
+                          }}
                         />
                       </Grid>
                     </Grid>
@@ -359,7 +428,14 @@ const SimulatorPage: React.FC = () => {
               </Grid>
 
               <Grid item xs={12}>
-                <Card sx={{ backgroundColor: '#F7F9FC' }}>
+                <Card
+                  sx={{
+                    backgroundColor: '#F7F9FC',
+                    '@media (prefers-color-scheme: dark)': {
+                      backgroundColor: '#1a2332',
+                    },
+                  }}
+                >
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
                       Simulation Details
@@ -408,7 +484,14 @@ const SimulatorPage: React.FC = () => {
           <TabPanel value={tabValue} index={3}>
             <Grid container spacing={3}>
               <Grid item xs={12}>
-                <Card sx={{ backgroundColor: '#F7F9FC' }}>
+                <Card
+                  sx={{
+                    backgroundColor: '#F7F9FC',
+                    '@media (prefers-color-scheme: dark)': {
+                      backgroundColor: '#1a2332',
+                    },
+                  }}
+                >
                   <CardContent>
                     <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
                       Results & Visualization

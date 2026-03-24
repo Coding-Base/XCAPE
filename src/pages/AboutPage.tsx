@@ -18,7 +18,6 @@ import {
   School as SchoolIcon,
   Speed as SpeedIcon,
   Public as PublicIcon,
-  Lock as LockIcon,
 } from '@mui/icons-material'
 
 const AboutPage: React.FC = () => {
@@ -89,6 +88,21 @@ const AboutPage: React.FC = () => {
               for reservoir performance analysis and forecasting.
             </Typography>
           </Box>
+
+          {/* Project Image */}
+          <Box
+            component="img"
+            src="/image1.png"
+            alt="XCAPE Project Overview"
+            sx={{
+              mt: 4,
+              maxWidth: '100%',
+              height: 'auto',
+              maxHeight: 300,
+              borderRadius: 2,
+              boxShadow: '0 10px 30px rgba(15, 76, 129, 0.2)',
+            }}
+          />
         </Box>
 
         {/* Project Details Grid */}

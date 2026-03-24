@@ -20,6 +20,7 @@ interface Concept {
   shortDesc: string
   fullDesc: string
   icon: string
+  image?: string
 }
 
 const CONCEPTS_PER_PAGE = 6
@@ -32,6 +33,7 @@ const concepts: Concept[] = [
     fullDesc:
       'Reservoir simulation is a mathematical modeling technique used to predict fluid flow behavior in oil and gas reservoirs. It involves solving partial differential equations that describe fluid movement through porous rocks, accounting for rock properties, fluid properties, and boundary conditions.',
     icon: '⚙️',
+    image: '/image1.png',
   },
   {
     id: 2,
@@ -40,6 +42,7 @@ const concepts: Concept[] = [
     fullDesc:
       'History matching is the process of adjusting reservoir model parameters to match observed production data from the field. This calibration ensures that the model accurately represents the real reservoir and can provide reliable forecasts for future production scenarios.',
     icon: '📊',
+    image: '/image2.png',
   },
   {
     id: 3,
@@ -48,6 +51,7 @@ const concepts: Concept[] = [
     fullDesc:
       'The Ensemble Kalman Filter (EnKF) is an advanced statistical algorithm that automates the history matching process. It uses multiple simulations (ensemble) to estimate model parameters while quantifying prediction uncertainty, providing both best estimates and confidence intervals.',
     icon: '🔄',
+    image: '/image7.png',
   },
   {
     id: 4,
@@ -161,6 +165,19 @@ const ConceptsPage: React.FC = () => {
                 }}
                 onClick={() => handleOpenDialog(concept)}
               >
+                {concept.image && (
+                  <Box
+                    component="img"
+                    src={concept.image}
+                    alt={concept.title}
+                    sx={{
+                      width: '100%',
+                      height: 180,
+                      objectFit: 'cover',
+                      borderBottom: '2px solid #F4B400',
+                    }}
+                  />
+                )}
                 <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
                   <Box sx={{ fontSize: '2.5rem', mb: 2 }}>{concept.icon}</Box>
                   <Typography

@@ -24,6 +24,13 @@ body {
   background-color: #f7f9fc;
 }
 
+@media (prefers-color-scheme: dark) {
+  body {
+    background-color: #1a1a2e;
+    color: #ecf0f1;
+  }
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
