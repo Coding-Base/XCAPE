@@ -6,7 +6,6 @@ import {
   Grid,
   Card,
   CardContent,
-  CardHeader,
   Typography,
   Button,
   Avatar,
@@ -18,12 +17,10 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Paper,
   Alert,
   CircularProgress,
   Tabs,
   Tab,
-  IconButton,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -31,7 +28,6 @@ import {
   TextField,
 } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
-import useMediaQuery from '@mui/material/useMediaQuery';
 import EditIcon from '@mui/icons-material/Edit';
 import LogoutIcon from '@mui/icons-material/Logout';
 import SimulatorIcon from '@mui/icons-material/Settings';
@@ -54,7 +50,6 @@ interface DashboardData {
 const UserDashboard: React.FC = () => {
   const navigate = useNavigate();
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { user, token, logout, error: authError } = useAuth();
   const [tabValue, setTabValue] = useState(0);
@@ -321,7 +316,7 @@ const UserDashboard: React.FC = () => {
           }}
         >
           <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-            <Tabs value={tabValue} onChange={(e, value) => setTabValue(value)}>
+            <Tabs value={tabValue} onChange={(_e, value) => setTabValue(value)}>
               <Tab
                 label="Recent Simulations"
                 icon={<HistoryIcon />}
