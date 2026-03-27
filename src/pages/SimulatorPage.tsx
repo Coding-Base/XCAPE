@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Container,
@@ -26,6 +26,8 @@ import {
   DownloadRounded as DownloadIcon,
   Info as InfoIcon,
 } from '@mui/icons-material'
+import { useAuth } from '@context/AuthContext'
+import ForecastCharts from '@components/ForecastCharts'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -55,19 +57,188 @@ const SimulatorPage: React.FC = () => {
   const [algorithmType, setAlgorithmType] = useState('enkf')
   const [isRunning, setIsRunning] = useState(false)
   const [runProgress, setRunProgress] = useState(0)
+  const [simulationId, setSimulationId] = useState<number | null>(null)
+  const [results, setResults] = useState<any | null>(null)
+  const { token } = useAuth()
 
-  const handleRunSimulation = () => {
-    setIsRunning(true)
-    // Simulate progress
-    const interval = setInterval(() => {
-      setRunProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval)
-          return 100
-        }
-        return prev + Math.random() * 30
+  // File upload state
+  const [productionFile, setProductionFile] = useState<File | null>(null)
+  const [modelFile, setModelFile] = useState<File | null>(null)
+  const [datasetId, setDatasetId] = useState<number | null>(null)
+  const [uploadError, setUploadError] = useState<string>('')
+  const [uploadSuccess, setUploadSuccess] = useState<string>('')
+
+  // Controlled quick params
+  const [initialPressure, setInitialPressure] = useState<number>(200)
+  const [porosity, setPorosity] = useState<number>(15)
+  const [permeability, setPermeability] = useState<number>(100)
+  const [waterSaturation, setWaterSaturation] = useState<number>(30)
+
+  const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+
+  const handleProductionFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      if (file.size > 50 * 1024 * 1024) {
+        setUploadError('File too large (max 50MB)')
+        return
+      }
+      setProductionFile(file)
+      setUploadError('')
+    }
+  }
+
+  const handleModelFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (file) {
+      if (file.size > 100 * 1024 * 1024) {
+        setUploadError('File too large (max 100MB)')
+        return
+      }
+      setModelFile(file)
+      setUploadError('')
+    }
+  }
+
+  const uploadDataset = async () => {
+    if (!productionFile) {
+      setUploadError('Please select a production data file')
+      return
+    }
+
+    try {
+      const formData = new FormData()
+      formData.append('file', productionFile)
+      formData.append('name', `Production Data - ${new Date().toLocaleString()}`)
+
+      const res = await fetch(`${API_BASE}/datasets/`, {
+        method: 'POST',
+        headers: {
+          Authorization: token ? `Token ${token}` : '',
+        },
+        body: formData,
       })
-    }, 1000)
+
+      if (!res.ok) {
+        throw new Error('Upload failed')
+      }
+
+      const data = await res.json()
+      setDatasetId(data.id)
+      setUploadSuccess(`Dataset uploaded successfully (ID: ${data.id})`)
+      setProductionFile(null)
+      setUploadError('')
+    } catch (err) {
+      console.error('Upload failed', err)
+      setUploadError('Failed to upload dataset')
+    }
+  }
+
+  const pollProgress = (id: number) => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_BASE}/simulations/${id}/`, {
+          headers: {
+            Authorization: token ? `Token ${token}` : '',
+            'Content-Type': 'application/json',
+          },
+        })
+        if (!res.ok) throw new Error('Failed to fetch progress')
+        const data = await res.json()
+        setRunProgress(data.progress || 0)
+        if (data.status === 'completed' || data.status === 'failed') {
+          clearInterval(interval)
+          setIsRunning(false)
+          setResults(data)
+          setTabValue(3)
+        }
+      } catch (err) {
+        console.error(err)
+        clearInterval(interval)
+        setIsRunning(false)
+      }
+    }, 2000)
+  }
+
+  const handleRunSimulation = async () => {
+    setIsRunning(true)
+    setRunProgress(0)
+
+    try {
+      const payload = {
+        name: `Run - ${new Date().toISOString()}`,
+        description: 'Launched from frontend UI',
+        matching_type: algorithmType === 'enkf' ? 'enkf' : 'baseline',
+        initial_pressure: initialPressure,
+        porosity: porosity,
+        permeability: permeability,
+        water_saturation: waterSaturation,
+      }
+
+      const createRes = await fetch(`${API_BASE}/simulations/`, {
+        method: 'POST',
+        headers: {
+          Authorization: token ? `Token ${token}` : '',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!createRes.ok) {
+        const err = await createRes.text()
+        throw new Error(err)
+      }
+
+      const created = await createRes.json()
+      const id = created.id
+      setSimulationId(id)
+
+      // Start simulation
+      await fetch(`${API_BASE}/simulations/${id}/start/`, {
+        method: 'POST',
+        headers: {
+          Authorization: token ? `Token ${token}` : '',
+          'Content-Type': 'application/json',
+        },
+      })
+
+      // Begin polling progress
+      pollProgress(id)
+    } catch (err) {
+      console.error('Run failed', err)
+      setIsRunning(false)
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      // cleanup if needed
+    }
+  }, [])
+
+  const downloadResults = async () => {
+    if (!simulationId) return
+    try {
+      const res = await fetch(`${API_BASE}/forecasts/by_simulation/?simulation_id=${simulationId}`, {
+        headers: { Authorization: token ? `Token ${token}` : '' },
+      })
+      if (!res.ok) throw new Error('Failed to fetch forecasts')
+      const forecasts = await res.json()
+
+      // Build JSON bundle
+      const payload = { simulation: results, forecasts }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `simulation_${simulationId}_results.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Download failed', err)
+    }
   }
 
   return (
@@ -149,12 +320,19 @@ const SimulatorPage: React.FC = () => {
                       Upload CSV file with pressure, flow rates, and cumulative production data
                     </Alert>
                     <Button
+                      component="label"
                       variant="outlined"
                       startIcon={<UploadIcon />}
                       fullWidth
                       sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}
                     >
-                      Select Production Data File
+                      {productionFile ? `✓ ${productionFile.name}` : 'Select Production Data File'}
+                      <input
+                        type="file"
+                        accept=".csv,.xlsx,.xls"
+                        onChange={handleProductionFileSelect}
+                        hidden
+                      />
                     </Button>
                     <Typography variant="caption" sx={{ display: 'block', mt: 2, color: 'textSecondary' }}>
                       Supported: CSV, XLSX
@@ -180,12 +358,19 @@ const SimulatorPage: React.FC = () => {
                       Upload your OPM Flow model file or parameter configuration
                     </Alert>
                     <Button
+                      component="label"
                       variant="outlined"
                       startIcon={<UploadIcon />}
                       fullWidth
                       sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}
                     >
-                      Select Model File
+                      {modelFile ? `✓ ${modelFile.name}` : 'Select Model File'}
+                      <input
+                        type="file"
+                        accept=".data,.py,.json"
+                        onChange={handleModelFileSelect}
+                        hidden
+                      />
                     </Button>
                     <Typography variant="caption" sx={{ display: 'block', mt: 2, color: 'textSecondary' }}>
                       Supported: DATA, PY, JSON
@@ -214,7 +399,8 @@ const SimulatorPage: React.FC = () => {
                           label="Initial Pressure (bar)"
                           placeholder="Enter pressure"
                           type="number"
-                          defaultValue={200}
+                          value={initialPressure}
+                          onChange={(e) => setInitialPressure(Number(e.target.value))}
                           variant="outlined"
                           inputProps={{
                             style: {
@@ -235,7 +421,8 @@ const SimulatorPage: React.FC = () => {
                           label="Porosity (%)"
                           placeholder="Enter porosity"
                           type="number"
-                          defaultValue={15}
+                          value={porosity}
+                          onChange={(e) => setPorosity(Number(e.target.value))}
                           variant="outlined"
                           inputProps={{
                             style: {
@@ -256,7 +443,8 @@ const SimulatorPage: React.FC = () => {
                           label="Permeability (mD)"
                           placeholder="Enter permeability"
                           type="number"
-                          defaultValue={100}
+                          value={permeability}
+                          onChange={(e) => setPermeability(Number(e.target.value))}
                           variant="outlined"
                           inputProps={{
                             style: {
@@ -277,7 +465,8 @@ const SimulatorPage: React.FC = () => {
                           label="Water Saturation (%)"
                           placeholder="Enter saturation"
                           type="number"
-                          defaultValue={30}
+                          value={waterSaturation}
+                          onChange={(e) => setWaterSaturation(Number(e.target.value))}
                           variant="outlined"
                           inputProps={{
                             style: {
