@@ -25,9 +25,12 @@ import {
   PlayArrow as PlayIcon,
   DownloadRounded as DownloadIcon,
   Info as InfoIcon,
+  DataObject as DataObjectIcon,
 } from '@mui/icons-material'
 import { useAuth } from '@context/AuthContext'
 import ForecastCharts from '@components/ForecastCharts'
+import ProductionFlowVisualization from '@components/ProductionFlowVisualization'
+import DataDrawer from '@components/DataDrawer'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -59,6 +62,7 @@ const SimulatorPage: React.FC = () => {
   const [runProgress, setRunProgress] = useState(0)
   const [simulationId, setSimulationId] = useState<number | null>(null)
   const [results, setResults] = useState<any | null>(null)
+  const [dataDrawerOpen, setDataDrawerOpen] = useState(false)
   const { token } = useAuth()
 
   // File upload state
@@ -66,6 +70,12 @@ const SimulatorPage: React.FC = () => {
   const [modelFile, setModelFile] = useState<File | null>(null)
   const [uploadError, setUploadError] = useState<string>('')
   const [uploadSuccess, setUploadSuccess] = useState<string>('')
+  const [uploadedDatasetId, setUploadedDatasetId] = useState<number | null>(null)
+
+  // Export state
+  const [exportLoading, setExportLoading] = useState(false)
+  const [exportError, setExportError] = useState<string>('')
+  const [exportSuccess, setExportSuccess] = useState<string>('')
 
   // Chart state
   const [priorForecast, setPriorForecast] = useState<any | null>(null)
@@ -119,21 +129,26 @@ const SimulatorPage: React.FC = () => {
         method: 'POST',
         headers: {
           Authorization: token ? `Token ${token}` : '',
+          // Do NOT set Content-Type - browser will set it with boundary for FormData
         },
         body: formData,
       })
 
       if (!res.ok) {
-        throw new Error('Upload failed')
+        const errorData = await res.json().catch(() => ({ detail: 'Upload failed' }))
+        const errorMsg = errorData?.detail || errorData?.error || 'Upload failed'
+        throw new Error(errorMsg)
       }
 
       const data = await res.json()
-      setUploadSuccess(`Dataset uploaded successfully (ID: ${data.id})`)
+      setUploadedDatasetId(data.id)
+      setUploadSuccess(`Dataset uploaded successfully (ID: ${data.id}) - Data parsed and ready to use!`)
       setProductionFile(null)
       setUploadError('')
+      console.log('[DATASET] Stored dataset ID:', data.id, 'Name:', data.name)
     } catch (err) {
       console.error('Upload failed', err)
-      setUploadError('Failed to upload dataset')
+      setUploadError(`Upload error: ${err instanceof Error ? err.message : 'Unknown error'}`)
     }
   }
 
@@ -152,6 +167,12 @@ const SimulatorPage: React.FC = () => {
         if (data.status === 'completed' || data.status === 'failed') {
           clearInterval(interval)
           setIsRunning(false)
+          console.log('🎯 Simulation completed. Results:', {
+            duration_seconds: data.duration_seconds,
+            match_quality: data.match_quality,
+            status: data.status,
+            fullData: data,
+          })
           setResults(data)
           setTabValue(3)
         }
@@ -163,7 +184,7 @@ const SimulatorPage: React.FC = () => {
     }, 2000)
   }
 
-  const handleRunSimulation = async () => {
+  const handleRunSimulation = async (type: string = 'baseline') => {
     setIsRunning(true)
     setRunProgress(0)
 
@@ -171,12 +192,15 @@ const SimulatorPage: React.FC = () => {
       const payload = {
         name: `Run - ${new Date().toISOString()}`,
         description: 'Launched from frontend UI',
-        matching_type: algorithmType === 'enkf' ? 'enkf' : 'baseline',
+        matching_type: type === 'enkf' ? 'enkf' : 'baseline',
         initial_pressure: initialPressure,
         porosity: porosity,
         permeability: permeability,
         water_saturation: waterSaturation,
+        ...(uploadedDatasetId && { dataset: uploadedDatasetId }),
       }
+
+      console.log('[SIM] Creating simulation with payload:', payload)
 
       const createRes = await fetch(`${API_BASE}/simulations/`, {
         method: 'POST',
@@ -225,17 +249,30 @@ const SimulatorPage: React.FC = () => {
 
     const fetchForecasts = async () => {
       try {
+        console.log(`[Forecasts] Fetching for simulation ${simulationId}`)
         const res = await fetch(`${API_BASE}/forecasts/by_simulation/?simulation_id=${simulationId}`, {
           headers: { Authorization: token ? `Token ${token}` : '' },
         })
-        if (!res.ok) return
+        if (!res.ok) {
+          console.warn(`[Forecasts] Fetch returned ${res.status}`)
+          return
+        }
 
         const forecasts = await res.json()
+        console.log(`[Forecasts] Received ${forecasts.length} forecasts:`, forecasts)
+        
         const prior = forecasts.find((f: any) => f.forecast_type === 'prior')
         const posterior = forecasts.find((f: any) => f.forecast_type === 'posterior')
 
-        if (prior) setPriorForecast(prior)
-        if (posterior) setPosteriorForecast(posterior)
+        console.log(`[Forecasts] Found prior:`, !!prior, 'posterior:', !!posterior)
+        if (prior) {
+          console.log(`[Forecasts] Prior predictions keys:`, Object.keys(prior.predictions || {}))
+          setPriorForecast(prior)
+        }
+        if (posterior) {
+          console.log(`[Forecasts] Posterior predictions keys:`, Object.keys(posterior.predictions || {}))
+          setPosteriorForecast(posterior)
+        }
       } catch (err) {
         console.error('Failed to fetch forecasts', err)
       }
@@ -245,27 +282,209 @@ const SimulatorPage: React.FC = () => {
   }, [results, simulationId, token])
 
   const downloadResults = async () => {
-    if (!simulationId) return
+    if (!simulationId) {
+      setExportError('No simulation available to export')
+      return
+    }
+
+    setExportLoading(true)
+    setExportError('')
+    setExportSuccess('')
+
     try {
       const res = await fetch(`${API_BASE}/forecasts/by_simulation/?simulation_id=${simulationId}`, {
         headers: { Authorization: token ? `Token ${token}` : '' },
       })
-      if (!res.ok) throw new Error('Failed to fetch forecasts')
+
+      if (!res.ok) {
+        throw new Error(`Failed to fetch forecasts: ${res.status} ${res.statusText}`)
+      }
+
       const forecasts = await res.json()
 
-      // Build JSON bundle
-      const payload = { simulation: results, forecasts }
+      // Build comprehensive JSON bundle with all data
+      const payload = {
+        exportDate: new Date().toISOString(),
+        simulation: results,
+        forecasts: forecasts,
+        metadata: {
+          simulationId: simulationId,
+          datasetId: uploadedDatasetId,
+          matchQuality: results?.match_quality,
+          duration: results?.duration_seconds,
+        },
+      }
+
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `simulation_${simulationId}_results.json`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `simulation_${simulationId}_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
       URL.revokeObjectURL(url)
+
+      setExportSuccess(`✓ Results exported successfully as simulation_${simulationId}.json`)
+      setTimeout(() => setExportSuccess(''), 4000)
     } catch (err) {
-      console.error('Download failed', err)
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred'
+      console.error('Download failed:', err)
+      setExportError(`Export failed: ${errorMessage}`)
+    } finally {
+      setExportLoading(false)
+    }
+  }
+
+  const generatePDFReport = async () => {
+    if (!simulationId || !results) {
+      setExportError('No simulation results available')
+      return
+    }
+
+    setExportLoading(true)
+    setExportError('')
+    setExportSuccess('')
+
+    try {
+      // Check if jspdf and html2canvas are available
+      const jsPDF = (await import('jspdf')).jsPDF
+      const html2canvas = (await import('html2canvas')).default
+
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      let yPosition = 20
+
+      // Title
+      doc.setFontSize(24)
+      doc.setTextColor(15, 76, 129)
+      doc.text('XCAPE Simulation Report', pageWidth / 2, yPosition, { align: 'center' })
+      yPosition += 15
+
+      // Export Date
+      doc.setFontSize(10)
+      doc.setTextColor(100, 100, 100)
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' })
+      yPosition += 10
+
+      // Divider line
+      doc.setDrawColor(15, 76, 129)
+      doc.line(20, yPosition, pageWidth - 20, yPosition)
+      yPosition += 10
+
+      // Simulation Details Section
+      doc.setFontSize(14)
+      doc.setTextColor(15, 76, 129)
+      doc.text('Simulation Results', 20, yPosition)
+      yPosition += 10
+
+      doc.setFontSize(11)
+      doc.setTextColor(0, 0, 0)
+
+      const detailsData = [
+        ['Simulation ID:', String(simulationId)],
+        ['Status:', results?.status || 'Completed'],
+        ['Algorithm:', results?.matching_type === 'enkf' ? 'Ensemble Kalman Filter (EnKF)' : 'Baseline'],
+        ['Match Quality:', `${Number(results?.match_quality || 0).toFixed(2)}%`],
+        ['Duration:', results?.duration_seconds ? `${Math.floor(results.duration_seconds / 60)}m ${results.duration_seconds % 60}s` : 'N/A'],
+        ['Dataset:', uploadedDatasetId ? `Dataset #${uploadedDatasetId}` : 'None'],
+      ]
+
+      detailsData.forEach(([label, value]) => {
+        doc.setFont(undefined, 'bold')
+        doc.text(label, 30, yPosition)
+        doc.setFont(undefined, 'normal')
+        doc.text(value, 90, yPosition)
+        yPosition += 8
+      })
+
+      yPosition += 5
+
+      // Parameters Section
+      doc.setFontSize(14)
+      doc.setTextColor(15, 76, 129)
+      doc.text('Reservoir Parameters', 20, yPosition)
+      yPosition += 10
+
+      doc.setFontSize(11)
+      doc.setTextColor(0, 0, 0)
+
+      const paramsData = [
+        ['Initial Pressure:', `${initialPressure} bar`],
+        ['Porosity:', `${porosity}%`],
+        ['Permeability:', `${permeability} mD`],
+        ['Water Saturation:', `${waterSaturation}%`],
+      ]
+
+      paramsData.forEach(([label, value]) => {
+        doc.setFont(undefined, 'bold')
+        doc.text(label, 30, yPosition)
+        doc.setFont(undefined, 'normal')
+        doc.text(value, 90, yPosition)
+        yPosition += 8
+      })
+
+      // Add new page for forecasts summary
+      doc.addPage()
+      yPosition = 20
+
+      doc.setFontSize(14)
+      doc.setTextColor(15, 76, 129)
+      doc.text('Forecast Summary', 20, yPosition)
+      yPosition += 15
+
+      if (priorForecast) {
+        doc.setFontSize(12)
+        doc.text('Prior Forecast (Initial Prediction)', 20, yPosition)
+        yPosition += 8
+        doc.setFontSize(10)
+        const priorUncertainty = priorForecast.uncertainty || {}
+        doc.text(`Oil Std Dev: ${(priorUncertainty.oil_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 5
+        doc.text(`Water Std Dev: ${(priorUncertainty.water_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 5
+        doc.text(`Gas Std Dev: ${(priorUncertainty.gas_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 10
+      }
+
+      if (posteriorForecast) {
+        doc.setFontSize(12)
+        doc.text('Posterior Forecast (After Calibration)', 20, yPosition)
+        yPosition += 8
+        doc.setFontSize(10)
+        const posteriorUncertainty = posteriorForecast.uncertainty || {}
+        doc.text(`Oil Std Dev: ${(posteriorUncertainty.oil_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 5
+        doc.text(`Water Std Dev: ${(posteriorUncertainty.water_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 5
+        doc.text(`Gas Std Dev: ${(posteriorUncertainty.gas_std_mean || 0).toFixed(2)}`, 30, yPosition)
+        yPosition += 10
+      }
+
+      // Footer
+      doc.setFontSize(8)
+      doc.setTextColor(150, 150, 150)
+      doc.text('This report was generated by XCAPE - Automated Reservoir History Matching System', 20, pageHeight - 10)
+
+      // Save PDF
+      doc.save(`simulation_${simulationId}_report.pdf`)
+      setExportSuccess('✓ PDF report generated and downloaded successfully!')
+      setTimeout(() => setExportSuccess(''), 4000)
+    } catch (err) {
+      // If jsPDF not available, provide fallback message
+      if ((err as any)?.message?.includes('Cannot find module')) {
+        setExportError('PDF export requires additional libraries. Using JSON export instead.')
+        // Fall back to JSON export
+        downloadResults()
+      } else {
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+        console.error('PDF generation failed:', err)
+        setExportError(`PDF export failed: ${errorMessage}. Downloading JSON instead.`)
+        downloadResults()
+      }
+    } finally {
+      setExportLoading(false)
     }
   }
 
@@ -331,6 +550,43 @@ const SimulatorPage: React.FC = () => {
           {/* Tab 1: Input Data */}
           <TabPanel value={tabValue} index={0}>
             <Grid container spacing={3}>
+              {/* Sample Data Info Card */}
+              <Grid item xs={12}>
+                <Card
+                  sx={{
+                    background: 'linear-gradient(135deg, #E3F2FD 0%, #F3E5F5 100%)',
+                    border: '2px solid #0F4C81',
+                    borderRadius: '12px',
+                  }}
+                >
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 0.5, color: '#0F4C81' }}>
+                          📚 Need Help Getting Started?
+                        </Typography>
+                        <Typography variant="body2" sx={{ color: '#555' }}>
+                          View sample datasets, understand data structure, and learn what format the system expects
+                        </Typography>
+                      </Box>
+                      <Button
+                        variant="contained"
+                        startIcon={<DataObjectIcon />}
+                        onClick={() => setDataDrawerOpen(true)}
+                        sx={{
+                          backgroundColor: '#0F4C81',
+                          '&:hover': { backgroundColor: '#0D3A5C' },
+                          whiteSpace: 'nowrap',
+                          ml: 2,
+                        }}
+                      >
+                        View Sample Data
+                      </Button>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Grid>
+
               <Grid item xs={12} md={6}>
                 <Card
                   sx={{
@@ -639,7 +895,7 @@ const SimulatorPage: React.FC = () => {
                           variant="contained"
                           size="large"
                           startIcon={<PlayIcon />}
-                          onClick={handleRunSimulation}
+                          onClick={() => handleRunSimulation('baseline')}
                           sx={{
                             backgroundColor: '#0F4C81',
                             px: 4,
@@ -666,7 +922,9 @@ const SimulatorPage: React.FC = () => {
                                 porosity: porosity,
                                 permeability: permeability,
                                 water_saturation: waterSaturation,
+                                ...(uploadedDatasetId && { dataset: uploadedDatasetId }),
                               }
+                              console.log('[EnKF] Creating simulation with dataset:', uploadedDatasetId)
                               const createRes = await fetch(`${API_BASE}/simulations/`, {
                                 method: 'POST',
                                 headers: {
@@ -815,43 +1073,98 @@ const SimulatorPage: React.FC = () => {
               <Grid container spacing={3}>
                 {/* Simulation Stats */}
                 <Grid item xs={12}>
-                  <Card>
+                  <Card sx={{
+                    background: 'linear-gradient(135deg, #F0F7FF 0%, #E8F1FA 100%)',
+                    boxShadow: '0 8px 24px rgba(15, 76, 129, 0.12)',
+                    border: '1px solid rgba(15, 76, 129, 0.15)',
+                    borderRadius: '12px',
+                  }}>
                     <CardContent>
-                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
-                        Simulation Summary
+                      <Typography variant="h6" sx={{ fontWeight: 800, mb: 3, color: '#0F4C81', display: 'flex', alignItems: 'center', gap: 1 }}>
+                        🔍 Simulation Results
                       </Typography>
-                      <Grid container spacing={2}>
+                      <Grid container spacing={3}>
                         <Grid item xs={12} sm={6} md={3}>
-                          <Typography variant="body2" color="textSecondary">
-                            Status
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                            {results.status || 'Unknown'}
-                          </Typography>
+                          <Box sx={{
+                            p: 2,
+                            backgroundColor: 'rgba(15, 76, 129, 0.08)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(15, 76, 129, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              backgroundColor: 'rgba(15, 76, 129, 0.12)',
+                              boxShadow: '0 4px 12px rgba(15, 76, 129, 0.15)'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ color: '#666', fontWeight: 500, mb: 1 }}>
+                              Status
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 700, color: '#0F4C81', fontSize: '18px' }}>
+                              ✓ {results.status || 'Complete'}
+                            </Typography>
+                          </Box>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                          <Typography variant="body2" color="textSecondary">
-                            Match Quality
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 600, color: '#28a745' }}>
-                            {results.match_quality ? `${results.match_quality.toFixed(2)}%` : 'N/A'}
-                          </Typography>
+                          <Box sx={{
+                            p: 2,
+                            backgroundColor: 'rgba(40, 167, 69, 0.08)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(40, 167, 69, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              backgroundColor: 'rgba(40, 167, 69, 0.12)',
+                              boxShadow: '0 4px 12px rgba(40, 167, 69, 0.15)'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ color: '#666', fontWeight: 500, mb: 1 }}>
+                              Match Quality
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 700, color: '#28a745', fontSize: '18px' }}>
+                              {results.match_quality !== undefined && results.match_quality !== null ? `${Number(results.match_quality).toFixed(2)}%` : 'N/A'}
+                            </Typography>
+                          </Box>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                          <Typography variant="body2" color="textSecondary">
-                            Duration
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                            {results.duration_seconds ? `${results.duration_seconds}s` : 'N/A'}
-                          </Typography>
+                          <Box sx={{
+                            p: 2,
+                            backgroundColor: 'rgba(255, 152, 0, 0.08)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(255, 152, 0, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              backgroundColor: 'rgba(255, 152, 0, 0.12)',
+                              boxShadow: '0 4px 12px rgba(255, 152, 0, 0.15)'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ color: '#666', fontWeight: 500, mb: 1 }}>
+                              Duration
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 700, color: '#FF9800', fontSize: '18px' }}>
+                              {results.duration_seconds !== undefined && results.duration_seconds !== null && results.duration_seconds > 0
+                                ? `${Math.floor(results.duration_seconds / 60)}m ${results.duration_seconds % 60}s`
+                                : 'N/A'}
+                            </Typography>
+                          </Box>
                         </Grid>
                         <Grid item xs={12} sm={6} md={3}>
-                          <Typography variant="body2" color="textSecondary">
-                            Type
-                          </Typography>
-                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                            {results.matching_type === 'enkf' ? 'EnKF' : 'Baseline'}
-                          </Typography>
+                          <Box sx={{
+                            p: 2,
+                            backgroundColor: 'rgba(76, 175, 80, 0.08)',
+                            borderRadius: '8px',
+                            border: '1px solid rgba(76, 175, 80, 0.2)',
+                            transition: 'all 0.3s ease',
+                            '&:hover': {
+                              backgroundColor: 'rgba(76, 175, 80, 0.12)',
+                              boxShadow: '0 4px 12px rgba(76, 175, 80, 0.15)'
+                            }
+                          }}>
+                            <Typography variant="body2" sx={{ color: '#666', fontWeight: 500, mb: 1 }}>
+                              Algorithm
+                            </Typography>
+                            <Typography variant="body1" sx={{ fontWeight: 700, color: '#4CAF50', fontSize: '18px' }}>
+                              {results.matching_type === 'enkf' ? 'EnKF' : 'Baseline'}
+                            </Typography>
+                          </Box>
                         </Grid>
                       </Grid>
                     </CardContent>
@@ -861,62 +1174,87 @@ const SimulatorPage: React.FC = () => {
                 {/* Charts */}
                 {(priorForecast || posteriorForecast) && (
                   <Grid item xs={12}>
-                    <Card>
-                      <CardContent>
-                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
-                          Production Forecast
+                    <Card
+                      sx={{
+                        background: 'linear-gradient(135deg, #F7F9FC 0%, #E8F1F8 100%)',
+                        boxShadow: '0 8px 24px rgba(15, 76, 129, 0.12)',
+                        border: '1px solid rgba(15, 76, 129, 0.1)',
+                        borderRadius: '12px',
+                      }}
+                    >
+                      <CardContent sx={{ p: 3 }}>
+                        <Typography variant="h5" sx={{ fontWeight: 800, mb: 3, color: '#0F4C81', display: 'flex', alignItems: 'center', gap: 1 }}>
+                          📊 Production Forecast Analysis
                         </Typography>
 
-                        {/* Metric Selector */}
-                        <Box sx={{ mb: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {/* Metric Selector - Enhanced */}
+                        <Box sx={{ 
+                          mb: 4, 
+                          display: 'flex', 
+                          gap: 1, 
+                          flexWrap: 'wrap',
+                          p: 2,
+                          backgroundColor: 'rgba(255, 255, 255, 0.6)',
+                          borderRadius: '8px',
+                          border: '1px solid rgba(15, 76, 129, 0.1)'
+                        }}>
                           {['oil', 'water', 'gas', 'pressure'].map((metric) => (
                             <Button
                               key={metric}
                               variant={chartMetric === metric ? 'contained' : 'outlined'}
                               onClick={() => setChartMetric(metric)}
                               sx={{
-                                backgroundColor: chartMetric === metric ? '#0F4C81' : 'transparent',
+                                backgroundColor: chartMetric === metric ? 'linear-gradient(135deg, #0F4C81 0%, #0D3A5C 100%)' : 'transparent',
                                 color: chartMetric === metric ? 'white' : '#0F4C81',
                                 borderColor: '#0F4C81',
+                                fontWeight: 600,
                                 textTransform: 'capitalize',
+                                transition: 'all 0.3s ease',
+                                '&:hover': {
+                                  backgroundColor: chartMetric === metric ? 'linear-gradient(135deg, #0D3A5C 0%, #0A2A42 100%)' : 'rgba(15, 76, 129, 0.05)',
+                                  borderColor: '#0D3A5C',
+                                }
                               }}
                             >
-                              {metric}
+                              {metric.charAt(0).toUpperCase() + metric.slice(1)}
                             </Button>
                           ))}
                         </Box>
 
                         {/* Prior Forecast Chart */}
                         {priorForecast && (
-                          <Box sx={{ mb: 4 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-                              Prior Forecast (Before Calibration)
-                            </Typography>
+                          <Box sx={{ mb: 5 }}>
                             <ForecastCharts
                               forecast={priorForecast}
                               metric={chartMetric}
-                              title={`${chartMetric.toUpperCase()} - Prior`}
+                              title={`${chartMetric.toUpperCase()} - Prior Forecast`}
+                              forecastType="prior"
                             />
                           </Box>
                         )}
 
                         {/* Posterior Forecast Chart */}
                         {posteriorForecast && (
-                          <Box sx={{ mb: 4 }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
-                              Posterior Forecast (After Calibration)
-                            </Typography>
+                          <Box sx={{ mb: 3 }}>
                             <ForecastCharts
                               forecast={posteriorForecast}
                               metric={chartMetric}
-                              title={`${chartMetric.toUpperCase()} - Posterior`}
+                              title={`${chartMetric.toUpperCase()} - Posterior Forecast`}
+                              forecastType="posterior"
                             />
                           </Box>
                         )}
 
                         {!priorForecast && !posteriorForecast && (
-                          <Alert severity="warning">
-                            Forecasts are being generated. Please refresh the page in a moment.
+                          <Alert 
+                            severity="info"
+                            sx={{
+                              backgroundColor: 'rgba(15, 76, 129, 0.1)',
+                              color: '#0F4C81',
+                              '& .MuiAlert-icon': { color: '#0F4C81' }
+                            }}
+                          >
+                            Forecasts are being generated. This typically takes 30-60 seconds. Refresh the page in a moment.
                           </Alert>
                         )}
                       </CardContent>
@@ -924,19 +1262,75 @@ const SimulatorPage: React.FC = () => {
                   </Grid>
                 )}
 
+                {/* Production Flow Visualization */}
+                {(priorForecast || posteriorForecast) && (
+                  <Grid item xs={12}>
+                    <ProductionFlowVisualization
+                      priorData={
+                        priorForecast && priorForecast.predictions
+                          ? {
+                              oil: priorForecast.predictions.oil?.mean?.[0] || 45,
+                              water: priorForecast.predictions.water?.mean?.[0] || 65,
+                              gas: priorForecast.predictions.gas?.mean?.[0] || 80,
+                              pressure: priorForecast.predictions.pressure?.mean?.[0] || 150,
+                            }
+                          : undefined
+                      }
+                      posteriorData={
+                        posteriorForecast && posteriorForecast.predictions
+                          ? {
+                              oil: posteriorForecast.predictions.oil?.mean?.[0] || 65,
+                              water: posteriorForecast.predictions.water?.mean?.[0] || 45,
+                              gas: posteriorForecast.predictions.gas?.mean?.[0] || 85,
+                              pressure: posteriorForecast.predictions.pressure?.mean?.[0] || 180,
+                            }
+                          : undefined
+                      }
+                    />
+                  </Grid>
+                )}
+
                 {/* Download Section */}
                 <Grid item xs={12}>
-                  <Box sx={{ display: 'flex', gap: 2 }}>
+                  {exportError && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                      {exportError}
+                    </Alert>
+                  )}
+                  {exportSuccess && (
+                    <Alert severity="success" sx={{ mb: 2 }}>
+                      {exportSuccess}
+                    </Alert>
+                  )}
+                  <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                     <Button
                       variant="contained"
                       startIcon={<DownloadIcon />}
                       onClick={downloadResults}
-                      sx={{ backgroundColor: '#0F4C81' }}
+                      disabled={exportLoading}
+                      sx={{ 
+                        backgroundColor: '#0F4C81',
+                        '&:disabled': { opacity: 0.6 }
+                      }}
                     >
-                      Download Results
+                      {exportLoading ? 'Exporting...' : 'Download Results (JSON)'}
                     </Button>
-                    <Button variant="outlined" sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}>
-                      Export Report
+                    <Button
+                      variant="outlined"
+                      startIcon={<DownloadIcon />}
+                      onClick={generatePDFReport}
+                      disabled={exportLoading}
+                      sx={{
+                        color: '#28a745',
+                        borderColor: '#28a745',
+                        '&:hover': {
+                          backgroundColor: 'rgba(40, 167, 69, 0.05)',
+                          borderColor: '#20c04a',
+                        },
+                        '&:disabled': { opacity: 0.6 }
+                      }}
+                    >
+                      {exportLoading ? 'Generating PDF...' : 'Export Report (PDF)'}
                     </Button>
                   </Box>
                 </Grid>
@@ -944,6 +1338,9 @@ const SimulatorPage: React.FC = () => {
             )}
           </TabPanel>
         </Card>
+
+        {/* Data Drawer */}
+        <DataDrawer open={dataDrawerOpen} onClose={() => setDataDrawerOpen(false)} />
       </Box>
     </Container>
   )

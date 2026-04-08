@@ -378,7 +378,7 @@ const UserDashboard: React.FC = () => {
                             />
                           </TableCell>
                           <TableCell>
-                            {sim.match_quality ? `${sim.match_quality.toFixed(1)}%` : '-'}
+                            {sim.match_quality !== undefined && sim.match_quality !== null ? `${sim.match_quality.toFixed(1)}%` : '-'}
                           </TableCell>
                           <TableCell>{new Date(sim.created_at).toLocaleDateString()}</TableCell>
                         </TableRow>
