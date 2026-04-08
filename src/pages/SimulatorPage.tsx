@@ -68,6 +68,11 @@ const SimulatorPage: React.FC = () => {
   const [uploadError, setUploadError] = useState<string>('')
   const [uploadSuccess, setUploadSuccess] = useState<string>('')
 
+  // Chart state
+  const [priorForecast, setPriorForecast] = useState<any | null>(null)
+  const [posteriorForecast, setPosteriorForecast] = useState<any | null>(null)
+  const [chartMetric, setChartMetric] = useState<string>('oil')
+
   // Controlled quick params
   const [initialPressure, setInitialPressure] = useState<number>(200)
   const [porosity, setPorosity] = useState<number>(15)
@@ -215,6 +220,31 @@ const SimulatorPage: React.FC = () => {
       // cleanup if needed
     }
   }, [])
+
+  // Fetch forecasts when simulation completes
+  useEffect(() => {
+    if (!results || !simulationId) return
+
+    const fetchForecasts = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/forecasts/by_simulation/?simulation_id=${simulationId}`, {
+          headers: { Authorization: token ? `Token ${token}` : '' },
+        })
+        if (!res.ok) return
+
+        const forecasts = await res.json()
+        const prior = forecasts.find((f: any) => f.forecast_type === 'prior')
+        const posterior = forecasts.find((f: any) => f.forecast_type === 'posterior')
+
+        if (prior) setPriorForecast(prior)
+        if (posterior) setPosteriorForecast(posterior)
+      } catch (err) {
+        console.error('Failed to fetch forecasts', err)
+      }
+    }
+
+    fetchForecasts()
+  }, [results, simulationId, token])
 
   const downloadResults = async () => {
     if (!simulationId) return
@@ -485,6 +515,30 @@ const SimulatorPage: React.FC = () => {
                   </CardContent>
                 </Card>
               </Grid>
+
+              {uploadError && (
+                <Grid item xs={12}>
+                  <Alert severity="error">{uploadError}</Alert>
+                </Grid>
+              )}
+
+              {uploadSuccess && (
+                <Grid item xs={12}>
+                  <Alert severity="success">{uploadSuccess}</Alert>
+                </Grid>
+              )}
+
+              {productionFile && (
+                <Grid item xs={12}>
+                  <Button
+                    variant="contained"
+                    onClick={uploadDataset}
+                    sx={{ backgroundColor: '#0F4C81' }}
+                  >
+                    Upload Dataset
+                  </Button>
+                </Grid>
+              )}
             </Grid>
           </TabPanel>
 
@@ -582,21 +636,87 @@ const SimulatorPage: React.FC = () => {
                     </Alert>
 
                     {!isRunning ? (
-                      <Button
-                        variant="contained"
-                        size="large"
-                        startIcon={<PlayIcon />}
-                        onClick={handleRunSimulation}
-                        sx={{
-                          backgroundColor: '#0F4C81',
-                          px: 4,
-                          '&:hover': {
-                            backgroundColor: '#0a3857',
-                          },
-                        }}
-                      >
-                        Start Simulation
-                      </Button>
+                      <Box sx={{ display: 'flex', gap: 2 }}>
+                        <Button
+                          variant="contained"
+                          size="large"
+                          startIcon={<PlayIcon />}
+                          onClick={handleRunSimulation}
+                          sx={{
+                            backgroundColor: '#0F4C81',
+                            px: 4,
+                            '&:hover': {
+                              backgroundColor: '#0a3857',
+                            },
+                          }}
+                        >
+                          Start Baseline
+                        </Button>
+                        <Button
+                          variant="contained"
+                          size="large"
+                          startIcon={<PlayIcon />}
+                          onClick={async () => {
+                            setIsRunning(true)
+                            setRunProgress(0)
+                            try {
+                              const payload = {
+                                name: `EnKF Run - ${new Date().toISOString()}`,
+                                description: 'EnKF with prior/posterior forecasts',
+                                matching_type: 'enkf',
+                                initial_pressure: initialPressure,
+                                porosity: porosity,
+                                permeability: permeability,
+                                water_saturation: waterSaturation,
+                              }
+                              const createRes = await fetch(`${API_BASE}/simulations/`, {
+                                method: 'POST',
+                                headers: {
+                                  Authorization: token ? `Token ${token}` : '',
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify(payload),
+                              })
+                              if (!createRes.ok) throw new Error('Failed to create simulation')
+                              const created = await createRes.json()
+                              const id = created.id
+                              setSimulationId(id)
+                              
+                              // Run EnKF with forecasts
+                              const enkfRes = await fetch(`${API_BASE}/simulations/${id}/run_enkf_with_forecasts/`, {
+                                method: 'POST',
+                                headers: {
+                                  Authorization: token ? `Token ${token}` : '',
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  ensemble_size: 100,
+                                  num_iterations: 10,
+                                  forecast_period_days: 365,
+                                }),
+                              })
+                              if (!enkfRes.ok) throw new Error('EnKF failed')
+                              const result = await enkfRes.json()
+                              setRunProgress(100)
+                              setResults(result.simulation)
+                              setIsRunning(false)
+                              setTabValue(3)
+                            } catch (err) {
+                              console.error(err)
+                              setIsRunning(false)
+                            }
+                          }}
+                          sx={{
+                            backgroundColor: '#28a745',
+                            px: 4,
+                            '&:hover': {
+                              backgroundColor: '#218838',
+                            },
+                          }}
+                        >
+                          Run EnKF + Forecasts
+                        </Button>
+                      </Box>
                     ) : (
                       <Box>
                         <Typography variant="body2" sx={{ mb: 2 }}>
@@ -671,52 +791,159 @@ const SimulatorPage: React.FC = () => {
 
           {/* Tab 4: Results */}
           <TabPanel value={tabValue} index={3}>
-            <Grid container spacing={3}>
-              <Grid item xs={12}>
-                <Card
-                  sx={{
-                    backgroundColor: '#F7F9FC',
-                    '@media (prefers-color-scheme: dark)': {
-                      backgroundColor: '#1a2332',
-                    },
-                  }}
-                >
-                  <CardContent>
-                    <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
-                      Results & Visualization
-                    </Typography>
-                    <Alert severity="info" sx={{ mb: 3 }}>
-                      Run a simulation to view results, charts, and parameter distributions
-                    </Alert>
-                    <Typography variant="body2" color="textSecondary">
-                      Results will appear here after simulation completion:
-                    </Typography>
-                    <ul style={{ marginTop: 12 }}>
-                      <li>Observed vs Predicted Production Data</li>
-                      <li>Parameter Posterior Distributions</li>
-                      <li>Ensemble Spread Visualization</li>
-                      <li>Production Forecasts</li>
-                      <li>RMSE and Match Quality Metrics</li>
-                    </ul>
-                  </CardContent>
-                </Card>
-              </Grid>
-
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', gap: 2 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={<DownloadIcon />}
-                    sx={{ backgroundColor: '#0F4C81' }}
+            {!results ? (
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
+                  <Card
+                    sx={{
+                      backgroundColor: '#F7F9FC',
+                      '@media (prefers-color-scheme: dark)': {
+                        backgroundColor: '#1a2332',
+                      },
+                    }}
                   >
-                    Download Results
-                  </Button>
-                  <Button variant="outlined" sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}>
-                    Export Report
-                  </Button>
-                </Box>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
+                        Results & Visualization
+                      </Typography>
+                      <Alert severity="info" sx={{ mb: 3 }}>
+                        Run a simulation to view results, charts, and parameter distributions
+                      </Alert>
+                    </CardContent>
+                  </Card>
+                </Grid>
               </Grid>
-            </Grid>
+            ) : (
+              <Grid container spacing={3}>
+                {/* Simulation Stats */}
+                <Grid item xs={12}>
+                  <Card>
+                    <CardContent>
+                      <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
+                        Simulation Summary
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Typography variant="body2" color="textSecondary">
+                            Status
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {results.status || 'Unknown'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Typography variant="body2" color="textSecondary">
+                            Match Quality
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600, color: '#28a745' }}>
+                            {results.match_quality ? `${results.match_quality.toFixed(2)}%` : 'N/A'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Typography variant="body2" color="textSecondary">
+                            Duration
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {results.duration_seconds ? `${results.duration_seconds}s` : 'N/A'}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Typography variant="body2" color="textSecondary">
+                            Type
+                          </Typography>
+                          <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                            {results.matching_type === 'enkf' ? 'EnKF' : 'Baseline'}
+                          </Typography>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* Charts */}
+                {(priorForecast || posteriorForecast) && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Typography variant="h6" sx={{ fontWeight: 700, mb: 2, color: '#0F4C81' }}>
+                          Production Forecast
+                        </Typography>
+
+                        {/* Metric Selector */}
+                        <Box sx={{ mb: 3, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          {['oil', 'water', 'gas', 'pressure'].map((metric) => (
+                            <Button
+                              key={metric}
+                              variant={chartMetric === metric ? 'contained' : 'outlined'}
+                              onClick={() => setChartMetric(metric)}
+                              sx={{
+                                backgroundColor: chartMetric === metric ? '#0F4C81' : 'transparent',
+                                color: chartMetric === metric ? 'white' : '#0F4C81',
+                                borderColor: '#0F4C81',
+                                textTransform: 'capitalize',
+                              }}
+                            >
+                              {metric}
+                            </Button>
+                          ))}
+                        </Box>
+
+                        {/* Prior Forecast Chart */}
+                        {priorForecast && (
+                          <Box sx={{ mb: 4 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
+                              Prior Forecast (Before Calibration)
+                            </Typography>
+                            <ForecastCharts
+                              forecast={priorForecast}
+                              metric={chartMetric}
+                              title={`${chartMetric.toUpperCase()} - Prior`}
+                            />
+                          </Box>
+                        )}
+
+                        {/* Posterior Forecast Chart */}
+                        {posteriorForecast && (
+                          <Box sx={{ mb: 4 }}>
+                            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 2 }}>
+                              Posterior Forecast (After Calibration)
+                            </Typography>
+                            <ForecastCharts
+                              forecast={posteriorForecast}
+                              metric={chartMetric}
+                              title={`${chartMetric.toUpperCase()} - Posterior`}
+                            />
+                          </Box>
+                        )}
+
+                        {!priorForecast && !posteriorForecast && (
+                          <Alert severity="warning">
+                            Forecasts are being generated. Please refresh the page in a moment.
+                          </Alert>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {/* Download Section */}
+                <Grid item xs={12}>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<DownloadIcon />}
+                      onClick={downloadResults}
+                      sx={{ backgroundColor: '#0F4C81' }}
+                    >
+                      Download Results
+                    </Button>
+                    <Button variant="outlined" sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}>
+                      Export Report
+                    </Button>
+                  </Box>
+                </Grid>
+              </Grid>
+            )}
           </TabPanel>
         </Card>
       </Box>
