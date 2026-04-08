@@ -64,7 +64,6 @@ const SimulatorPage: React.FC = () => {
   // File upload state
   const [productionFile, setProductionFile] = useState<File | null>(null)
   const [modelFile, setModelFile] = useState<File | null>(null)
-  const [datasetId, setDatasetId] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string>('')
   const [uploadSuccess, setUploadSuccess] = useState<string>('')
 
@@ -129,7 +128,6 @@ const SimulatorPage: React.FC = () => {
       }
 
       const data = await res.json()
-      setDatasetId(data.id)
       setUploadSuccess(`Dataset uploaded successfully (ID: ${data.id})`)
       setProductionFile(null)
       setUploadError('')
