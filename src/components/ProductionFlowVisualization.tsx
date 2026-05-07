@@ -1,5 +1,6 @@
-import React from 'react'
-import { Box, Card, CardContent, Typography, Grid, useTheme } from '@mui/material'
+import React, { useState } from 'react'
+import { Box, Card, CardContent, Typography, Grid, useTheme, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import Production3DVisualization from './Production3DVisualization'
 
 interface FlowData {
   oil: number
@@ -249,6 +250,7 @@ const ProductionFlowVisualization: React.FC<ProductionFlowProps> = ({
 }) => {
   const theme = useTheme()
   const isDark = theme.palette.mode === 'dark'
+  const [visualizationMode, setVisualizationMode] = useState<'2d' | '3d'>('2d')
 
   // Default data if not provided
   const prior: FlowData = priorData || {
@@ -272,11 +274,91 @@ const ProductionFlowVisualization: React.FC<ProductionFlowProps> = ({
 
   return (
     <Box sx={{ width: '100%', mb: 4 }}>
-      <Typography variant="h5" sx={{ fontWeight: 800, mb: 3, color: '#0F4C81' }}>
-        {title}
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h5" sx={{ fontWeight: 800, color: '#0F4C81' }}>
+          {title}
+        </Typography>
+        <ToggleButtonGroup
+          value={visualizationMode}
+          exclusive
+          onChange={(_, newMode) => newMode && setVisualizationMode(newMode)}
+          size="small"
+          sx={{
+            backgroundColor: isDark ? 'rgba(15, 76, 129, 0.1)' : 'rgba(15, 76, 129, 0.05)',
+            border: '1px solid rgba(15, 76, 129, 0.3)',
+            borderRadius: '8px',
+          }}
+        >
+          <ToggleButton
+            value="2d"
+            sx={{
+              color: ':#0F4C81',
+              '&.Mui-selected': {
+                backgroundColor: '#0F4C81',
+                color: 'white',
+              },
+            }}
+          >
+            📊 2D View
+          </ToggleButton>
+          <ToggleButton
+            value="3d"
+            sx={{
+              color: '#0F4C81',
+              '&.Mui-selected': {
+                backgroundColor: '#0F4C81',
+                color: 'white',
+              },
+            }}
+          >
+            🎯 3D View
+          </ToggleButton>
+        </ToggleButtonGroup>
+      </Box>
 
-      <Grid container spacing={3}>
+      {visualizationMode === '3d' ? (
+        // 3D Views
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Card
+              sx={{
+                borderRadius: '12px',
+                border: '2px solid #0F4C81',
+                overflow: 'hidden',
+                height: '600px',
+              }}
+            >
+              <CardContent sx={{ p: 0, height: '100%' }}>
+                <Production3DVisualization
+                  priorData={prior}
+                  posteriorData={posterior}
+                  showPrior={true}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card
+              sx={{
+                borderRadius: '12px',
+                border: '2px solid #28a745',
+                overflow: 'hidden',
+                height: '600px',
+              }}
+            >
+              <CardContent sx={{ p: 0, height: '100%' }}>
+                <Production3DVisualization
+                  priorData={prior}
+                  posteriorData={posterior}
+                  showPrior={false}
+                />
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      ) : (
+        // 2D Views
+        <Grid container spacing={3}>
         {/* Prior Forecast */}
         <Grid item xs={12} md={6}>
           <Card
@@ -567,6 +649,7 @@ const ProductionFlowVisualization: React.FC<ProductionFlowProps> = ({
           </Card>
         </Grid>
       </Grid>
+      )}
 
       {/* Educational footer */}
       <Box

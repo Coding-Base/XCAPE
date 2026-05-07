@@ -21,6 +21,7 @@ import ContactPage from '@pages/ContactPage'
 import LoginPage from '@pages/LoginPage'
 import RegisterPage from '@pages/RegisterPage'
 import UserDashboard from '@pages/UserDashboard'
+import SensitivityPage from '@pages/SensitivityPage'
 
 // Auth
 import { AuthProvider, useAuth } from '@context/AuthContext'
@@ -224,6 +225,13 @@ const AppContent: React.FC = () => {
   const themeMode = useAppSelector((state) => state.theme.mode)
   const theme = themeMode === 'light' ? lightTheme : darkTheme
 
+  React.useEffect(() => {
+    if (themeMode === 'dark') {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [themeMode])
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -255,6 +263,14 @@ const AppContent: React.FC = () => {
               element={
                 <ProtectedRoute>
                   <SimulatorPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sensitivity"
+              element={
+                <ProtectedRoute>
+                  <SensitivityPage />
                 </ProtectedRoute>
               }
             />

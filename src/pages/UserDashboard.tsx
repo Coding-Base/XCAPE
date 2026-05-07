@@ -35,6 +35,8 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload';
 import HistoryIcon from '@mui/icons-material/History';
 import StorageIcon from '@mui/icons-material/Storage';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import SensitivityIcon from '@mui/icons-material/Assessment';
+import SensitivityPage from './SensitivityPage';
 import { useAuth } from '../context/AuthContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -335,6 +337,12 @@ const UserDashboard: React.FC = () => {
                 iconPosition="start"
                 sx={{ textTransform: 'none' }}
               />
+              <Tab
+                label="Sensitivity"
+                icon={<SensitivityIcon />}
+                iconPosition="start"
+                sx={{ textTransform: 'none' }}
+              />
             </Tabs>
           </Box>
 
@@ -488,6 +496,13 @@ const UserDashboard: React.FC = () => {
                   </TableBody>
                 </Table>
               </TableContainer>
+            )}
+
+            {/* Sensitivity Tab */}
+            {tabValue === 3 && (
+              <Box sx={{ p: 2 }}>
+                <SensitivityPage />
+              </Box>
             )}
           </CardContent>
         </Card>

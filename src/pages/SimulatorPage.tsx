@@ -31,6 +31,9 @@ import { useAuth } from '@context/AuthContext'
 import ForecastCharts from '@components/ForecastCharts'
 import ProductionFlowVisualization from '@components/ProductionFlowVisualization'
 import DataDrawer from '@components/DataDrawer'
+import { DataInputModal } from '@components/DataInputModal'
+import { InterpretButton } from '@components/InterpretButton'
+import { InterpretationDrawer } from '@components/InterpretationDrawer'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -63,6 +66,7 @@ const SimulatorPage: React.FC = () => {
   const [simulationId, setSimulationId] = useState<number | null>(null)
   const [results, setResults] = useState<any | null>(null)
   const [dataDrawerOpen, setDataDrawerOpen] = useState(false)
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false)
   const { token } = useAuth()
 
   // File upload state
@@ -87,6 +91,12 @@ const SimulatorPage: React.FC = () => {
   const [porosity, setPorosity] = useState<number>(15)
   const [permeability, setPermeability] = useState<number>(100)
   const [waterSaturation, setWaterSaturation] = useState<number>(30)
+  const [datasetParams, setDatasetParams] = useState<{
+    initial_pressure?: number | null
+    porosity?: number | null
+    permeability?: number | null
+    water_saturation?: number | null
+  } | null>(null)
 
   const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
 
@@ -152,8 +162,165 @@ const SimulatorPage: React.FC = () => {
     }
   }
 
-  const pollProgress = (id: number) => {
-    const interval = setInterval(async () => {
+  // When a dataset is selected/created, fetch it to see if it contains reservoir_model
+  useEffect(() => {
+    if (!uploadedDatasetId) {
+      setDatasetParams(null)
+      return
+    }
+
+    const fetchDataset = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/datasets/${uploadedDatasetId}/`, {
+          headers: { Authorization: token ? `Token ${token}` : '' },
+        })
+        if (!res.ok) return
+        const data = await res.json()
+        const prod = data.production_data || {}
+        let rm = null
+        if (prod && typeof prod === 'object') {
+          rm = prod.reservoir_model || prod.raw_json || prod
+        }
+
+        if (rm && typeof rm === 'object') {
+          // Extract common parameter names (best-effort)
+          let ip: number | null = null
+          let por: number | null = null
+          let perm: number | null = null
+          let wsat: number | null = null
+
+          ip = (rm.initial_pressure ?? rm.pressure ?? rm.initial_pressure_bar ?? rm.pressure_bar) || null
+          por = (rm.porosity ?? rm.porosity_fraction ?? rm.poro) || null
+          perm = (rm.permeability ?? rm.perm ?? rm.permeability_md) || null
+          wsat = (rm.water_saturation ?? rm.water_saturation ?? rm.wat_sat ?? rm.initial_water_saturation) || null
+
+          // If nested rock_properties/fluid_properties exist, prefer those
+          if (rm.rock_properties && typeof rm.rock_properties === 'object') {
+            por = por || (rm.rock_properties.porosity ?? rm.rock_properties.poro ?? rm.rock_properties.porosity_fraction) || null
+            perm = perm || (rm.rock_properties.permeability ?? rm.rock_properties.perm ?? rm.rock_properties.permeability_md) || null
+          }
+
+          if (rm.fluid_properties && typeof rm.fluid_properties === 'object') {
+            ip = ip || (rm.fluid_properties.initial_pressure ?? rm.fluid_properties.pressure) || null
+            wsat = wsat || (rm.fluid_properties.water_saturation ?? rm.fluid_properties.waterSat) || null
+          }
+
+          // Normalize porosity/water saturation to fraction (0-1). Accept numbers or numeric strings.
+          const normalizeFraction = (v: any) => {
+            const n = Number(v)
+            if (!isFinite(n)) return null
+            let x = n
+            if (x > 1) {
+              // Common case: value in percent (0-100)
+              if (x <= 100) x = x / 100
+              else if (x <= 1000) x = x / 100
+              else x = x / 10000
+            }
+            if (x < 0) return null
+            if (x > 1) x = 1
+            return x
+          }
+
+          por = normalizeFraction(por)
+          wsat = normalizeFraction(wsat)
+
+          setDatasetParams({
+            initial_pressure: ip ?? null,
+            porosity: por ?? null,
+            permeability: perm ?? null,
+            water_saturation: wsat ?? null,
+          })
+          return
+        }
+
+        // If we reached here and no reservoir model params found, try to infer initial pressure
+        // from production data arrays (e.g., Pressure_psi or Pressure)
+        try {
+          const possiblePressureArrays = [
+            prod.Pressure_psi,
+            prod.Pressure,
+            prod.pressure_psi,
+            prod.pressure,
+          ]
+
+          let firstPressure: number | null = null
+          for (const arr of possiblePressureArrays) {
+            if (Array.isArray(arr) && arr.length > 0) {
+              const v = Number(arr[0])
+              if (!isNaN(v)) {
+                firstPressure = v
+                break
+              }
+            }
+          }
+
+          if (firstPressure !== null) {
+            setDatasetParams({
+              initial_pressure: firstPressure,
+              porosity: null,
+              permeability: null,
+              water_saturation: null,
+            })
+          }
+        } catch (e) {
+          // ignore
+        }
+      } catch (e) {
+        console.warn('Failed to fetch dataset params', e)
+        setDatasetParams(null)
+      }
+    }
+
+    fetchDataset()
+  }, [uploadedDatasetId, API_BASE, token])
+
+  const handleManualDatasetSave = async (payload: { name: string; description?: string; production_data: Record<string, any> }) => {
+    try {
+      const authToken = token || localStorage.getItem('authToken')
+      if (!authToken) throw new Error('Authentication token not found')
+
+      const res = await fetch(`${API_BASE}/datasets/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: authToken ? `Token ${authToken}` : '',
+        },
+        body: JSON.stringify({
+          name: payload.name,
+          description: payload.description || '',
+          production_data: payload.production_data,
+        }),
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => '')
+        let msg = `Server error (${res.status})`
+        try {
+          const j = JSON.parse(text)
+          msg = j.detail || JSON.stringify(j)
+        } catch (e) {
+          msg = text || msg
+        }
+        throw new Error(msg)
+      }
+
+      const created = await res.json()
+      if (created && created.id) {
+        setUploadedDatasetId(created.id)
+      }
+      setIsManualModalOpen(false)
+      alert(`Dataset created (ID: ${created?.id})`)
+    } catch (err) {
+      console.error('Manual dataset save failed', err)
+      throw err
+    }
+  }
+
+  const pollProgress = async (id: number) => {
+    let isPolling = true
+    const pollInterval = 1000 // Poll every 1 second for faster updates
+    
+    while (isPolling) {
       try {
         const res = await fetch(`${API_BASE}/simulations/${id}/`, {
           headers: {
@@ -161,32 +328,50 @@ const SimulatorPage: React.FC = () => {
             'Content-Type': 'application/json',
           },
         })
-        if (!res.ok) throw new Error('Failed to fetch progress')
+        
+        if (!res.ok) {
+          throw new Error('Failed to fetch progress')
+        }
+        
         const data = await res.json()
+        console.log(`[POLL] Progress: ${data.progress}%, Status: ${data.status}`)
+        
+        // Update progress state
         setRunProgress(data.progress || 0)
+        
+        // Check if simulation is complete
         if (data.status === 'completed' || data.status === 'failed') {
-          clearInterval(interval)
+          isPolling = false
           setIsRunning(false)
           console.log('🎯 Simulation completed. Results:', {
             duration_seconds: data.duration_seconds,
             match_quality: data.match_quality,
             status: data.status,
+            progress: data.progress,
             fullData: data,
           })
           setResults(data)
+          setRunProgress(100)
           setTabValue(3)
+          break
         }
+        
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollInterval))
       } catch (err) {
-        console.error(err)
-        clearInterval(interval)
+        console.error('Poll error:', err)
+        isPolling = false
         setIsRunning(false)
+        break
       }
-    }, 2000)
+    }
   }
 
   const handleRunSimulation = async (type: string = 'baseline') => {
     setIsRunning(true)
     setRunProgress(0)
+    setPriorForecast(null)
+    setPosteriorForecast(null)
 
     try {
       const payload = {
@@ -220,8 +405,10 @@ const SimulatorPage: React.FC = () => {
       const id = created.id
       setSimulationId(id)
 
+      console.log('[SIM] Simulation created with ID:', id)
+
       // Start simulation
-      await fetch(`${API_BASE}/simulations/${id}/start/`, {
+      const startRes = await fetch(`${API_BASE}/simulations/${id}/start/`, {
         method: 'POST',
         headers: {
           Authorization: token ? `Token ${token}` : '',
@@ -229,10 +416,19 @@ const SimulatorPage: React.FC = () => {
         },
       })
 
-      // Begin polling progress
-      pollProgress(id)
+      if (!startRes.ok) {
+        throw new Error('Failed to start simulation')
+      }
+
+      console.log('[SIM] Simulation started, beginning polling...')
+
+      // Begin polling progress - fire and forget but track in promise
+      pollProgress(id).catch(err => {
+        console.error('[SIM] Poll error:', err)
+        setIsRunning(false)
+      })
     } catch (err) {
-      console.error('Run failed', err)
+      console.error('[SIM] Run failed:', err)
       setIsRunning(false)
     }
   }
@@ -347,9 +543,8 @@ const SimulatorPage: React.FC = () => {
     setExportSuccess('')
 
     try {
-      // Check if jspdf and html2canvas are available
+      // Check if jspdf is available
       const jsPDF = (await import('jspdf')).jsPDF
-      const html2canvas = (await import('html2canvas')).default
 
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
@@ -392,9 +587,9 @@ const SimulatorPage: React.FC = () => {
       ]
 
       detailsData.forEach(([label, value]) => {
-        doc.setFont(undefined, 'bold')
+        doc.setFont('helvetica', 'bold')
         doc.text(label, 30, yPosition)
-        doc.setFont(undefined, 'normal')
+        doc.setFont('helvetica', 'normal')
         doc.text(value, 90, yPosition)
         yPosition += 8
       })
@@ -418,9 +613,9 @@ const SimulatorPage: React.FC = () => {
       ]
 
       paramsData.forEach(([label, value]) => {
-        doc.setFont(undefined, 'bold')
+        doc.setFont('helvetica', 'bold')
         doc.text(label, 30, yPosition)
-        doc.setFont(undefined, 'normal')
+        doc.setFont('helvetica', 'normal')
         doc.text(value, 90, yPosition)
         yPosition += 8
       })
@@ -489,6 +684,7 @@ const SimulatorPage: React.FC = () => {
   }
 
   return (
+    <>
     <Container maxWidth="lg">
       <Box sx={{ py: 4 }}>
         <Typography
@@ -618,6 +814,22 @@ const SimulatorPage: React.FC = () => {
                         hidden
                       />
                     </Button>
+                    <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setIsManualModalOpen(true)}
+                        sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}
+                      >
+                        Manual Entry
+                      </Button>
+                      <Button
+                        variant="contained"
+                        onClick={uploadDataset}
+                        sx={{ ml: 'auto' }}
+                      >
+                        Upload
+                      </Button>
+                    </Box>
                     <Typography variant="caption" sx={{ display: 'block', mt: 2, color: 'textSecondary' }}>
                       Supported: CSV, XLSX
                     </Typography>
@@ -766,6 +978,34 @@ const SimulatorPage: React.FC = () => {
                         />
                       </Grid>
                     </Grid>
+                    {datasetParams && (
+                      <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Box>
+                          <Typography variant="subtitle2">Detected dataset parameters:</Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {datasetParams.initial_pressure != null ? `Initial Pressure: ${datasetParams.initial_pressure}` : 'Initial Pressure: —'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {datasetParams.porosity != null ? `Porosity: ${Math.min((datasetParams.porosity * 100), 100).toFixed(2)}%` : 'Porosity: —'}
+                          </Typography>
+                          <Typography variant="caption" sx={{ display: 'block' }}>
+                            {datasetParams.permeability != null ? `Permeability: ${datasetParams.permeability} mD` : 'Permeability: —'}
+                          </Typography>
+                        </Box>
+                        <Button
+                          variant="outlined"
+                          onClick={() => {
+                            if (datasetParams.initial_pressure) setInitialPressure(Number(datasetParams.initial_pressure))
+                            if (datasetParams.porosity) setPorosity(Number((datasetParams.porosity as number) * 100))
+                            if (datasetParams.permeability) setPermeability(Number(datasetParams.permeability))
+                            if (datasetParams.water_saturation) setWaterSaturation(Number((datasetParams.water_saturation as number) * 100))
+                            alert('Dataset parameters applied to quick parameters')
+                            }}
+                          >
+                            Apply dataset parameters
+                          </Button>
+                      </Box>
+                    )}
                   </CardContent>
                 </Card>
               </Grid>
@@ -937,8 +1177,13 @@ const SimulatorPage: React.FC = () => {
                               const created = await createRes.json()
                               const id = created.id
                               setSimulationId(id)
-                              
-                              // Run EnKF with forecasts
+
+                              // Begin polling progress immediately so the UI updates while EnKF runs
+                              pollProgress(id).catch((err) => {
+                                console.error('[SIM] Poll error (EnKF):', err)
+                              })
+
+                              // Run EnKF with forecasts (server may stream updates to simulation.progress)
                               const enkfRes = await fetch(`${API_BASE}/simulations/${id}/run_enkf_with_forecasts/`, {
                                 method: 'POST',
                                 headers: {
@@ -953,6 +1198,8 @@ const SimulatorPage: React.FC = () => {
                               })
                               if (!enkfRes.ok) throw new Error('EnKF failed')
                               const result = await enkfRes.json()
+
+                              // Ensure final progress and results are set (pollProgress may already have done this)
                               setRunProgress(100)
                               setResults(result.simulation)
                               setIsRunning(false)
@@ -1340,9 +1587,30 @@ const SimulatorPage: React.FC = () => {
         </Card>
 
         {/* Data Drawer */}
-        <DataDrawer open={dataDrawerOpen} onClose={() => setDataDrawerOpen(false)} />
+            <DataDrawer open={dataDrawerOpen} onClose={() => setDataDrawerOpen(false)} onDatasetCreated={(id?: number) => {
+              if (id) setUploadedDatasetId(id)
+            }} />
+
+          {/* Manual Entry Modal (moved from DataDrawer) */}
+          <DataInputModal
+            isOpen={isManualModalOpen}
+            onClose={() => setIsManualModalOpen(false)}
+            onSave={handleManualDatasetSave}
+          />
       </Box>
     </Container>
+
+    {/* Floating Interpret Button - Outside container for absolute positioning */}
+    {simulationId && results && (
+      <InterpretButton 
+        simulationId={simulationId} 
+        disabled={!results}
+      />
+    )}
+
+    {/* Interpretation Drawer */}
+    <InterpretationDrawer />
+    </>
   )
 }
 

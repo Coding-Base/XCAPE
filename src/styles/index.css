@@ -31,6 +31,50 @@ body {
   }
 }
 
+/* Dark-mode class-based overrides (Tailwind configured with `darkMode: 'class'`) */
+/* These provide sensible fallbacks for components that use light utility classes */
+.dark body {
+  background-color: #0b1220;
+  color: #e6eef8;
+}
+
+.dark .bg-white {
+  background-color: #0f1724 !important;
+}
+.dark .bg-gray-50,
+.dark .bg-gray-100 {
+  background-color: #071022 !important;
+}
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700 {
+  color: #e6eef8 !important;
+}
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: #9fb0c3 !important;
+}
+.dark .border-slate-200,
+.dark .border-gray-200 {
+  border-color: #23303a !important;
+}
+.dark .shadow-sm {
+  box-shadow: 0 1px 2px rgba(2,6,23,0.6) !important;
+}
+.dark .bg-white\/10 {
+  background-color: rgba(255,255,255,0.06) !important;
+}
+.dark .hover\:bg-white\/20:hover {
+  background-color: rgba(255,255,255,0.12) !important;
+}
+
+/* Button / tag dark adjustments */
+.dark .bg-gray-100.text-gray-700 {
+  background-color: transparent !important;
+  color: #c9d6e3 !important;
+}
+
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
