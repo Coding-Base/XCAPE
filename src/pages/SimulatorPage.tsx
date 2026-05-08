@@ -32,6 +32,7 @@ import ForecastCharts from '@components/ForecastCharts'
 import ProductionFlowVisualization from '@components/ProductionFlowVisualization'
 import DataDrawer from '@components/DataDrawer'
 import { DataInputModal } from '@components/DataInputModal'
+import { AttachReservoirModal } from '@components/AttachReservoirModal'
 import { InterpretButton } from '@components/InterpretButton'
 import { InterpretationDrawer } from '@components/InterpretationDrawer'
 
@@ -67,6 +68,7 @@ const SimulatorPage: React.FC = () => {
   const [results, setResults] = useState<any | null>(null)
   const [dataDrawerOpen, setDataDrawerOpen] = useState(false)
   const [isManualModalOpen, setIsManualModalOpen] = useState(false)
+  const [isAttachModalOpen, setIsAttachModalOpen] = useState(false)
   const { token } = useAuth()
 
   // File upload state
@@ -417,7 +419,19 @@ const SimulatorPage: React.FC = () => {
       })
 
       if (!startRes.ok) {
-        throw new Error('Failed to start simulation')
+        let errText = 'Failed to start simulation'
+        try {
+          const txt = await startRes.text()
+          const j = JSON.parse(txt)
+          errText = j.detail || j.error || JSON.stringify(j)
+        } catch (e) {
+          // fallback to status
+          errText = `Failed to start simulation (status ${startRes.status})`
+        }
+        // Surface error to user
+        alert(errText)
+        setIsRunning(false)
+        return
       }
 
       console.log('[SIM] Simulation started, beginning polling...')
@@ -821,6 +835,13 @@ const SimulatorPage: React.FC = () => {
                         sx={{ color: '#0F4C81', borderColor: '#0F4C81' }}
                       >
                         Manual Entry
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        onClick={() => setIsAttachModalOpen(true)}
+                        sx={{ color: '#137c11', borderColor: '#137c11' }}
+                      >
+                        Attach Reservoir Model
                       </Button>
                       <Button
                         variant="contained"
@@ -1596,6 +1617,14 @@ const SimulatorPage: React.FC = () => {
             isOpen={isManualModalOpen}
             onClose={() => setIsManualModalOpen(false)}
             onSave={handleManualDatasetSave}
+          />
+
+          <AttachReservoirModal
+            isOpen={isAttachModalOpen}
+            onClose={() => setIsAttachModalOpen(false)}
+            onAttached={(id?: number) => {
+              if (id) setUploadedDatasetId(id)
+            }}
           />
       </Box>
     </Container>

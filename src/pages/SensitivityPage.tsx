@@ -53,10 +53,7 @@ const SensitivityPage: React.FC = () => {
 
     const existing = getGlobalLib()
     if (existing) {
-      mountLib()
-      return () => {
-        try { if (existing.unmount) existing.unmount(container) } catch {}
-      }
+      try { if (existing.unmount) existing.unmount(container) } catch {}
     }
 
     // Ensure host React/ReactDOM globals exist for the UMD bundle
@@ -76,14 +73,18 @@ const SensitivityPage: React.FC = () => {
       ;(window as any).process = { env: { NODE_ENV: 'production' } }
     }
 
+    const cacheBuster = Date.now()
+    const cssHref = `${SENSITIVITY_CSS}?t=${cacheBuster}`
+    const libSrc = `${SENSITIVITY_LIB}?t=${cacheBuster}`
+
     // Load CSS file
     const link = document.createElement('link')
     link.rel = 'stylesheet'
-    link.href = SENSITIVITY_CSS
+    link.href = cssHref
     document.head.appendChild(link)
 
     const script = document.createElement('script')
-    script.src = SENSITIVITY_LIB
+    script.src = libSrc
     script.async = true
     script.onload = () => { mountLib().catch(err => console.error(err)) }
     script.onerror = (e) => console.error('Failed to load sensitivity library', e)
@@ -92,6 +93,8 @@ const SensitivityPage: React.FC = () => {
     return () => {
       const lib = getGlobalLib()
       try { if (lib && lib.unmount) lib.unmount(container) } catch {}
+      if (script.parentNode) script.parentNode.removeChild(script)
+      if (link.parentNode) link.parentNode.removeChild(link)
     }
   }, [])
 

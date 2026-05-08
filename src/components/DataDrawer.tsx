@@ -165,81 +165,12 @@ const RESERVOIR_FIELD_DESCRIPTIONS: { [key: string]: string } = {
   gas_viscosity_cp: 'Gas viscosity in centipoise (cP)',
 }
 
-const DataDrawer: React.FC<DataDrawerProps> = ({ open, onClose, onDatasetCreated }) => {
+const DataDrawer: React.FC<DataDrawerProps> = ({ open, onClose }) => {
   const [tabValue, setTabValue] = useState(0)
   // Manual entry moved to Simulator input page; drawer no longer opens DataInputModal
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
-  }
-
-  const handleSaveDataset = async (data: {
-    name: string
-    description?: string
-    production_data: Record<string, any>
-  }) => {
-    try {
-      const token = localStorage.getItem('authToken')
-      if (!token) {
-        throw new Error('Authentication token not found')
-      }
-
-      // Check if production_data is in the expected format
-      let productionData = data.production_data
-
-      // If it's in array format (from ProductionDataTable), convert it
-      if (
-        Array.isArray(productionData.Days) &&
-        Array.isArray(productionData.Oil_bbl) &&
-        Array.isArray(productionData.Water_bbl) &&
-        Array.isArray(productionData.Gas_scf) &&
-        Array.isArray(productionData.Pressure_psi)
-      ) {
-        // It's already in the correct format
-      } else if (productionData.reservoir_model) {
-        // It's a reservoir model
-        productionData = productionData
-      }
-
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
-      const response = await fetch(`${API_BASE}/datasets/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify({
-          name: data.name,
-          description: data.description || '',
-          production_data: productionData,
-        }),
-      })
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to create dataset'
-        const responseText = await response.text()
-        console.error('API Error Response:', responseText)
-        try {
-          const errorData = JSON.parse(responseText)
-          errorMessage = errorData.detail || errorData.production_data?.[0] || JSON.stringify(errorData)
-        } catch (e) {
-          // If response is not JSON, use status text
-          errorMessage = `Server error (${response.status}): ${response.statusText || responseText || 'Unknown error'}`
-        }
-        throw new Error(errorMessage)
-      }
-
-      // Successfully created dataset - parse JSON and return id to parent
-      const created = await response.json().catch(() => null)
-      if (onDatasetCreated && created && created.id) {
-        onDatasetCreated(created.id)
-      }
-      // Show success message
-      alert(`Dataset created successfully (ID: ${created?.id || 'unknown'})`)
-    } catch (error) {
-      console.error('Error saving dataset:', error)
-      throw error
-    }
   }
 
   const downloadJSON = (data: any, filename: string) => {

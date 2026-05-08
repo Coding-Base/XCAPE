@@ -25,6 +25,7 @@ export const DataInputModal: React.FC<DataInputModalProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<TabType>('file');
   const [inputMode, setInputMode] = useState<InputMode>('production');
+  const [step, setStep] = useState<'production' | 'reservoir' | 'review'>('production');
   const [name, setName] = useState(defaultName || '');
   const [description, setDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -57,12 +58,23 @@ export const DataInputModal: React.FC<DataInputModalProps> = ({
         return;
       }
 
-      if (inputMode === 'production' && productionData) {
-        dataToSave = productionData;
-      } else if (inputMode === 'reservoir' && reservoirData) {
-        dataToSave = { reservoir_model: reservoirData };
+      // Require both production and reservoir data for manual combined save
+      if (activeTab === 'manual') {
+        if (!productionData) {
+          setError('Please enter production data before saving');
+          return;
+        }
+        if (!reservoirData) {
+          setError('Please enter or upload a reservoir model before saving');
+          return;
+        }
+        // Merge production arrays with reservoir_model key
+        dataToSave = {
+          ...productionData,
+          reservoir_model: reservoirData,
+        };
       } else {
-        setError(`Please enter ${inputMode === 'production' ? 'production' : 'reservoir'} data`);
+        setError('Please use file upload for file-based datasets');
         return;
       }
 
@@ -81,6 +93,7 @@ export const DataInputModal: React.FC<DataInputModalProps> = ({
       setReservoirData(null);
       setInputMode('production');
       setActiveTab('file');
+      setStep('production');
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error saving dataset');
@@ -174,53 +187,76 @@ export const DataInputModal: React.FC<DataInputModalProps> = ({
             </div>
           )}
 
-          {/* Manual Entry Tab */}
+          {/* Manual Entry Tab (two-step wizard) */}
           {activeTab === 'manual' && (
             <div className="space-y-4">
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setInputMode('production')}
-                  className={`flex-1 px-4 py-2 rounded font-medium text-sm transition-colors ${
-                    inputMode === 'production'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                  }`}
-                  disabled={isLoading}
-                >
-                  Production Data
-                </button>
-                <button
-                  onClick={() => setInputMode('reservoir')}
-                  className={`flex-1 px-4 py-2 rounded font-medium text-sm transition-colors ${
-                    inputMode === 'reservoir'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
-                  }`}
-                  disabled={isLoading}
-                >
-                  Reservoir Model
-                </button>
-              </div>
-
-              {/* Production Data Input */}
-              {inputMode === 'production' && (
-                <ProductionDataTable
-                  onDataChange={(data) => {
-                    // Convert array format to the expected format
-                    setProductionData({
-                      Days: data.map((row) => Number(row.Days) || 0),
-                      Oil_bbl: data.map((row) => Number(row.Oil_bbl) || 0),
-                      Water_bbl: data.map((row) => Number(row.Water_bbl) || 0),
-                      Gas_scf: data.map((row) => Number(row.Gas_scf) || 0),
-                      Pressure_psi: data.map((row) => Number(row.Pressure_psi) || 0),
-                    });
-                  }}
-                />
+              {step === 'production' && (
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-slate-300 mb-2">Step 1 — Enter production data</p>
+                  <ProductionDataTable
+                    onDataChange={(data) => {
+                      setProductionData({
+                        Days: data.map((row) => Number(row.Days) || 0),
+                        Oil_bbl: data.map((row) => Number(row.Oil_bbl) || 0),
+                        Water_bbl: data.map((row) => Number(row.Water_bbl) || 0),
+                        Gas_scf: data.map((row) => Number(row.Gas_scf) || 0),
+                        Pressure_psi: data.map((row) => Number(row.Pressure_psi) || 0),
+                      });
+                    }}
+                  />
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={() => setStep('reservoir')}
+                      className={`px-4 py-2 bg-blue-600 text-white rounded font-medium text-sm disabled:opacity-50`}
+                      disabled={!productionData}
+                    >
+                      Next: Reservoir Model
+                    </button>
+                  </div>
+                </div>
               )}
 
-              {/* Reservoir Model Input */}
-              {inputMode === 'reservoir' && (
-                <ReservoirPropertiesForm onDataChange={setReservoirData} />
+              {step === 'reservoir' && (
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-slate-300 mb-2">Step 2 — Upload or paste reservoir model JSON</p>
+                  <ReservoirPropertiesForm onDataChange={setReservoirData} />
+                  <div className="flex justify-between mt-3">
+                    <button
+                      onClick={() => setStep('production')}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded font-medium text-sm"
+                    >
+                      Back
+                    </button>
+                    <button
+                      onClick={() => setStep('review')}
+                      className={`px-4 py-2 bg-blue-600 text-white rounded font-medium text-sm disabled:opacity-50`}
+                      disabled={!reservoirData}
+                    >
+                      Review & Save
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {step === 'review' && (
+                <div>
+                  <p className="text-sm text-gray-700 dark:text-slate-300 mb-2">Review your inputs</p>
+                  <div className="mb-3">
+                    <strong>Production points:</strong> {productionData ? Object.values(productionData)[0]?.length || 0 : 0}
+                  </div>
+                  <div className="mb-3">
+                    <strong>Reservoir model:</strong> {reservoirData ? 'Present' : 'Missing'}
+                  </div>
+                  <div className="flex justify-between mt-3">
+                    <button
+                      onClick={() => setStep('reservoir')}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded font-medium text-sm"
+                    >
+                      Back
+                    </button>
+                    <div />
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -246,7 +282,12 @@ export const DataInputModal: React.FC<DataInputModalProps> = ({
           <button
             onClick={handleSave}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={isLoading || !name.trim() || activeTab === 'file'}
+            disabled={
+              isLoading ||
+              !name.trim() ||
+              activeTab === 'file' ||
+              (activeTab === 'manual' && !(productionData && reservoirData))
+            }
           >
             {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
             Save Dataset
